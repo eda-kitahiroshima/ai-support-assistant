@@ -10,9 +10,7 @@ export async function captureScreen(): Promise<string> {
 
         // 画面共有を開始
         const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-                mediaSource: 'screen' as any,
-            },
+            video: true,
             audio: false,
         });
 
