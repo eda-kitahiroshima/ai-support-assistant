@@ -1,5 +1,7 @@
 'use client';
 
+import React from 'react';
+
 interface AnswerDisplayProps {
     answer: string;
 }
@@ -8,7 +10,7 @@ export default function AnswerDisplay({ answer }: AnswerDisplayProps) {
     // Markdownライクなフォーマットを簡易パース
     const formatAnswer = (text: string) => {
         const lines = text.split('\n');
-        const formatted: JSX.Element[] = [];
+        const formatted: React.ReactElement[] = [];
         let currentList: string[] = [];
         let listType: 'ol' | 'ul' | null = null;
 
