@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import ImageUpload from '@/components/ImageUpload';
-import AnswerDisplay from '@/components/AnswerDisplay';
 import QuickCaptureButton from '@/components/QuickCaptureButton';
-
-interface Goal {
-  objective: string;
-  currentStatus: string;
-  deadline?: string;
-}
+import AnswerDisplay from '@/components/AnswerDisplay';
+import ConversationHistory from '@/components/ConversationHistory';
+import { Goal } from '@/lib/types';
+import {
+  getConversationHistory,
+  saveConversation,
+  deleteConversation,
+  generateId
+} from '@/lib/conversation-history';
+import type { ConversationItem } from '@/lib/types';
 
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
@@ -21,8 +23,9 @@ export default function Home() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState('');
+  const [history, setHistory] = useState<ConversationItem[]>([]);
 
-  // 目標を読み込む
+  // 目標と履歴を読み込む
   useEffect(() => {
     const savedGoal = localStorage.getItem('userGoal');
     if (savedGoal) {
@@ -32,6 +35,9 @@ export default function Home() {
     } else {
       setIsEditingGoal(true); // 初回は編集モード
     }
+
+    // 会話履歴を読み込む
+    setHistory(getConversationHistory());
   }, []);
 
   const handleGoalSave = () => {
@@ -50,28 +56,38 @@ export default function Home() {
     setIsEditingGoal(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // ワンクリックキャプチャ
+  const handleQuickCapture = (capturedImage: string, autoQuestion: string) => {
+    setImage(capturedImage);
+    setQuestion(autoQuestion);
+    setError('');
 
-    if (!image || !question.trim()) {
-      setError('画像と質問の両方を入力してください');
-      return;
-    }
+    // 自動的に送信
+    submitQuestion(capturedImage, autoQuestion);
+  };
 
+  const submitQuestion = async (img: string, q: string) => {
     setIsLoading(true);
     setError('');
     setAnswer('');
 
     try {
+      // 直近3件の会話を取得
+      const recentHistory = getConversationHistory(3).map(item => ({
+        question: item.question,
+        answer: item.answer
+      }));
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          image,
-          question: question.trim(),
-          goal: goal
+          image: img,
+          question: q,
+          goal: goal,
+          history: recentHistory
         })
       });
 
@@ -83,7 +99,20 @@ export default function Home() {
 
       setAnswer(data.response);
       setRemaining(data.remaining);
-      setQuestion('');
+
+      // 会話を保存
+      const newConversation: ConversationItem = {
+        id: generateId(),
+        timestamp: Date.now(),
+        question: q,
+        answer: data.response,
+        image: img
+      };
+      saveConversation(newConversation);
+
+      // 履歴を再読み込み
+      setHistory(getConversationHistory());
+
     } catch (err: any) {
       setError(err.message || 'エラーが発生しました');
     } finally {
@@ -91,41 +120,17 @@ export default function Home() {
     }
   };
 
-  // ワンクリックキャプチャ
-  const handleQuickCapture = (capturedImage: string, autoQuestion: string) => {
-    setImage(capturedImage);
-    setQuestion(autoQuestion);
-    setError('');
-    setAnswer('');
+  const handleHistorySelect = (item: ConversationItem) => {
+    setQuestion(item.question);
+    setAnswer(item.answer);
+    setImage(item.image || null);
+  };
 
-    // 自動的に送信
-    setIsLoading(true);
-
-    fetch('/api/analyze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image: capturedImage,
-        question: autoQuestion,
-        goal: goal
-      })
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'エラーが発生しました');
-        }
-        setAnswer(data.response);
-        setRemaining(data.remaining);
-      })
-      .catch((err: any) => {
-        setError(err.message || 'エラーが発生しました');
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+  const handleHistoryDelete = (id: string) => {
+    if (confirm('この会話を削除しますか？')) {
+      deleteConversation(id);
+      setHistory(getConversationHistory());
+    }
   };
 
   return (
@@ -152,58 +157,7 @@ export default function Home() {
       {/* メインコンテンツ */}
       <main className="max-w-6xl mx-auto px-4 py-6">
         <div className="space-y-6">
-          {/* 目標設定エリア */}
-          <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 rounded-2xl p-6 border border-indigo-700/50">
-            <div className="flex items-start gap-3">
-              <span className="text-3xl">🎯</span>
-              <div className="flex-1">
-                {isEditingGoal ? (
-                  <div className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-300">
-                      今日やりたいこと・目標を教えてください
-                    </label>
-                    <input
-                      type="text"
-                      value={goalInput}
-                      onChange={(e) => setGoalInput(e.target.value)}
-                      placeholder="例: Google APIの設定方法を知りたい、WordPressでブログを開設したい"
-                      className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      autoFocus
-                    />
-                    <button
-                      onClick={handleGoalSave}
-                      className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg transition-all font-medium"
-                    >
-                      設定完了
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <p className="text-xs text-gray-400 mb-1">今日の目標</p>
-                      <p className="text-white font-medium">{goal?.objective}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setIsEditingGoal(true);
-                        setGoalInput(goal?.objective || '');
-                      }}
-                      className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
-                    >
-                      編集
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            {!isEditingGoal && (
-              <p className="text-xs text-gray-400 mt-3 ml-12">
-                💡 目標を設定すると、AIがより的確な手順を教えてくれます
-              </p>
-            )}
-          </div>
-
-          {/* ワンクリックキャプチャボタン */}
+          {/* 1. ワンクリックキャプチャボタン（最上部） */}
           <div className="rounded-2xl overflow-hidden shadow-2xl">
             <QuickCaptureButton
               onCapture={handleQuickCapture}
@@ -212,7 +166,7 @@ export default function Home() {
             />
           </div>
 
-          {/* 結果表示エリア */}
+          {/* 2. AI回答エリア（次のステップ） */}
           {(answer || isLoading) && (
             <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 border border-gray-700">
               {isLoading ? (
@@ -229,8 +183,8 @@ export default function Home() {
               ) : answer ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">✨</span>
-                    <h2 className="text-xl font-bold text-white">AI のアドバイス</h2>
+                    <span className="text-3xl">✨</span>
+                    <h2 className="text-2xl font-bold text-white">次のステップ</h2>
                   </div>
                   <AnswerDisplay answer={answer} />
                   {image && (
@@ -255,8 +209,68 @@ export default function Home() {
             </div>
           )}
 
+          {/* 3. 目標表示エリア（コンパクト） */}
+          <div className="bg-gradient-to-r from-indigo-900/20 to-purple-900/20 rounded-xl p-4 border border-indigo-700/30">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">🎯</span>
+              <div className="flex-1">
+                {isEditingGoal ? (
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-gray-300">
+                      今日やりたいこと・目標を教えてください
+                    </label>
+                    <input
+                      type="text"
+                      value={goalInput}
+                      onChange={(e) => setGoalInput(e.target.value)}
+                      placeholder="例: Google APIの設定方法を知りたい、WordPressでブログを開設したい"
+                      className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleGoalSave}
+                      className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg transition-all font-medium"
+                    >
+                      設定完了
+                    </button>
+                  </div>
+                ) : goal ? (
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-400 mb-1">目標</p>
+                      <p className="text-white font-medium">{goal.objective}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsEditingGoal(true);
+                        setGoalInput(goal?.objective || '');
+                      }}
+                      className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+                    >
+                      編集
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            {!isEditingGoal && goal && (
+              <p className="text-xs text-gray-400 mt-2 ml-11">
+                💡 AIがこの目標を考慮して、より的確なアドバイスを提供します
+              </p>
+            )}
+          </div>
+
+          {/* 4. 過去の会話履歴 */}
+          {history.length > 0 && (
+            <ConversationHistory
+              history={history}
+              onSelect={handleHistorySelect}
+              onDelete={handleHistoryDelete}
+            />
+          )}
+
           {/* 初期状態のガイド */}
-          {!answer && !isLoading && (
+          {!answer && !isLoading && history.length === 0 && (
             <div className="bg-gray-800/30 rounded-2xl p-8 border border-dashed border-gray-600 text-center">
               <div className="text-6xl mb-4">📸</div>
               <h3 className="text-xl font-bold text-white mb-2">使い方</h3>
@@ -276,6 +290,10 @@ export default function Home() {
                 <li className="flex gap-2">
                   <span className="text-indigo-400 font-bold">4.</span>
                   <span>AIが「どのボタンを押すべきか」具体的に教えます</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-indigo-400 font-bold">5.</span>
+                  <span>過去の会話が自動で保存され、AIがより的確にサポート</span>
                 </li>
               </ol>
               <p className="text-sm text-gray-500 mt-6">

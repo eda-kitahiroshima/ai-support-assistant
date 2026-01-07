@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { image, question, goal } = await request.json();
+        const { image, question, goal, history } = await request.json();
 
         // 入力検証
         if (!image || !question) {
@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // AI解析（目標がある場合はコンテキスト付き）
-        const response = goal
-            ? await analyzeImageWithGoal(image, question, goal)
+        // AI解析（目標・履歴がある場合はコンテキスト付き）
+        const response = goal || history
+            ? await analyzeImageWithGoal(image, question, goal, history)
             : await analyzeImage(image, question);
 
         return NextResponse.json(

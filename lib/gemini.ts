@@ -89,17 +89,34 @@ export interface Goal {
     deadline?: string;
 }
 
+export interface ConversationHistoryItem {
+    question: string;
+    answer: string;
+}
+
 /**
- * 目標コンテキスト付きで画像を解析
+ * 目標コンテキスト付きで画像を解析（会話履歴対応）
  */
 export async function analyzeImageWithGoal(
     imageBase64: string,
     question: string,
-    goal?: Goal
+    goal?: Goal,
+    history?: ConversationHistoryItem[]
 ): Promise<string> {
     const model = genAI.getGenerativeModel({
         model: 'gemini-2.5-flash',
     });
+
+    // 会話履歴をフォーマット
+    const historyContext = history && history.length > 0
+        ? `【過去の会話履歴】
+${history.map((item, index) => `
+Q${index + 1}: ${item.question}
+A${index + 1}: ${item.answer.substring(0, 200)}${item.answer.length > 200 ? '...' : ''}
+`).join('\n')}
+
+`
+        : '';
 
     // 目標がある場合はコンテキストを追加
     const goalContext = goal
@@ -157,7 +174,7 @@ ${goal.deadline ? `- 期限: ${goal.deadline}` : ''}
         const base64Data = mimeMatch[2];
 
         const result = await model.generateContent([
-            `${goalContext}${systemPrompt}\n\nユーザーの質問: ${question}`,
+            `${historyContext}${goalContext}${systemPrompt}\n\nユーザーの質問: ${question}`,
             {
                 inlineData: {
                     data: base64Data,
