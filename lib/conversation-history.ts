@@ -75,3 +75,36 @@ export function deleteConversation(id: string): void {
 export function generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
+
+/**
+ * 特定の目標の会話履歴を取得
+ */
+export function getConversationsByGoal(goalId: string, limit?: number): ConversationItem[] {
+    try {
+        const allHistory = getConversationHistory();
+        const filtered = allHistory.filter(item => item.goalId === goalId);
+
+        if (limit && limit > 0) {
+            return filtered.slice(0, limit);
+        }
+
+        return filtered;
+    } catch (error) {
+        console.error('Failed to get conversations by goal:', error);
+        return [];
+    }
+}
+
+/**
+ * 特定の目標の会話を全て削除
+ */
+export function deleteConversationsByGoal(goalId: string): void {
+    try {
+        const history = getConversationHistory();
+        const filtered = history.filter(item => item.goalId !== goalId);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    } catch (error) {
+        console.error('Failed to delete conversations by goal:', error);
+    }
+}
+

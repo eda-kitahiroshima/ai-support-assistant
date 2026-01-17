@@ -3,77 +3,117 @@
 import { useState, useEffect } from 'react';
 import QuickCaptureButton from '@/components/QuickCaptureButton';
 import AnswerDisplay from '@/components/AnswerDisplay';
-import ConversationHistory from '@/components/ConversationHistory';
-import { Goal } from '@/lib/types';
+import GoalList from '@/components/GoalList';
+import GoalDetails from '@/components/GoalDetails';
+import ConversationPane from '@/components/ConversationPane';
+import NewGoalModal from '@/components/NewGoalModal';
+import { Goal, ConversationItem } from '@/lib/types';
 import {
-  getConversationHistory,
+  getAllGoals,
+  getActiveGoal,
+  setActiveGoal,
+  saveGoal,
+  deleteGoal
+} from '@/lib/goal-management';
+import {
+  getConversationsByGoal,
   saveConversation,
-  deleteConversation,
   generateId
 } from '@/lib/conversation-history';
-import type { ConversationItem } from '@/lib/types';
 
 export default function Home() {
-  const [image, setImage] = useState<string | null>(null);
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [activeGoal, setActiveGoalState] = useState<Goal | null>(null);
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [currentAnswer, setCurrentAnswer] = useState('');
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [error, setError] = useState('');
-  const [goal, setGoal] = useState<Goal | null>(null);
-  const [isEditingGoal, setIsEditingGoal] = useState(false);
-  const [goalInput, setGoalInput] = useState('');
-  const [history, setHistory] = useState<ConversationItem[]>([]);
+  const [isNewGoalModalOpen, setIsNewGoalModalOpen] = useState(false);
 
-  // 目標と履歴を読み込む
+  // 初期データ読み込み
   useEffect(() => {
-    const savedGoal = localStorage.getItem('userGoal');
-    if (savedGoal) {
-      const parsedGoal = JSON.parse(savedGoal);
-      setGoal(parsedGoal);
-      setGoalInput(parsedGoal.objective);
-    } else {
-      setIsEditingGoal(true); // 初回は編集モード
-    }
+    loadGoals();
 
-    // 会話履歴を読み込む
-    setHistory(getConversationHistory());
+    // 目標更新イベントリスナー（ステップチェック時）
+    const handleGoalUpdate = () => {
+      loadGoals();
+    };
+    window.addEventListener('goal-updated', handleGoalUpdate);
+
+    return () => {
+      window.removeEventListener('goal-updated', handleGoalUpdate);
+    };
   }, []);
 
-  const handleGoalSave = () => {
-    if (!goalInput.trim()) {
-      alert('目標を入力してください');
-      return;
+  // アクティブな目標が変わったら会話を読み込み
+  useEffect(() => {
+    if (activeGoal) {
+      const convs = getConversationsByGoal(activeGoal.id);
+      setConversations(convs);
+    } else {
+      setConversations([]);
     }
+  }, [activeGoal?.id]);
 
-    const newGoal: Goal = {
-      objective: goalInput.trim(),
-      currentStatus: '',
-    };
+  const loadGoals = () => {
+    const allGoals = getAllGoals();
+    setGoals(allGoals);
 
-    localStorage.setItem('userGoal', JSON.stringify(newGoal));
-    setGoal(newGoal);
-    setIsEditingGoal(false);
+    const active = getActiveGoal();
+    setActiveGoalState(active);
+
+    // 目標がない場合はモーダルを開く
+    if (allGoals.length === 0) {
+      setIsNewGoalModalOpen(true);
+    }
   };
 
-  // ワンクリックキャプチャ
-  const handleQuickCapture = (capturedImage: string, autoQuestion: string) => {
-    setImage(capturedImage);
-    setQuestion(autoQuestion);
-    setError('');
+  const handleSelectGoal = (goalId: string) => {
+    setActiveGoal(goalId);
+    loadGoals();
+    setCurrentAnswer('');
+    setCurrentImage(null);
+  };
 
-    // 自動的に送信
+  const handleNewGoal = () => {
+    setIsNewGoalModalOpen(true);
+  };
+
+  const handleSaveGoal = (newGoal: Goal) => {
+    // 既存の全ての目標を非アクティブに
+    const allGoals = getAllGoals();
+    allGoals.forEach(g => {
+      g.isActive = false;
+      saveGoal(g);
+    });
+
+    // 新しい目標を保存
+    saveGoal(newGoal);
+
+    loadGoals();
+    setIsNewGoalModalOpen(false);
+  };
+
+  const handleQuickCapture = (capturedImage: string, autoQuestion: string) => {
+    setCurrentImage(capturedImage);
     submitQuestion(capturedImage, autoQuestion);
   };
 
   const submitQuestion = async (img: string, q: string) => {
+    if (!activeGoal) {
+      setError('先に目標を選択してください');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
-    setAnswer('');
+    setCurrentAnswer('');
 
     try {
       // 直近3件の会話を取得
-      const recentHistory = getConversationHistory(3).map(item => ({
+      const recentHistory = getConversationsByGoal(activeGoal.id, 3).map(item => ({
         question: item.question,
         answer: item.answer
       }));
@@ -86,7 +126,7 @@ export default function Home() {
         body: JSON.stringify({
           image: img,
           question: q,
-          goal: goal,
+          goal: activeGoal,
           history: recentHistory
         })
       });
@@ -97,12 +137,13 @@ export default function Home() {
         throw new Error(data.error || 'エラーが発生しました');
       }
 
-      setAnswer(data.response);
+      setCurrentAnswer(data.response);
       setRemaining(data.remaining);
 
       // 会話を保存
       const newConversation: ConversationItem = {
         id: generateId(),
+        goalId: activeGoal.id,
         timestamp: Date.now(),
         question: q,
         answer: data.response,
@@ -110,8 +151,8 @@ export default function Home() {
       };
       saveConversation(newConversation);
 
-      // 履歴を再読み込み
-      setHistory(getConversationHistory());
+      // 会話リストを更新
+      setConversations(getConversationsByGoal(activeGoal.id));
 
     } catch (err: any) {
       setError(err.message || 'エラーが発生しました');
@@ -120,32 +161,33 @@ export default function Home() {
     }
   };
 
-  const handleHistorySelect = (item: ConversationItem) => {
-    setQuestion(item.question);
-    setAnswer(item.answer);
-    setImage(item.image || null);
-  };
-
-  const handleHistoryDelete = (id: string) => {
-    if (confirm('この会話を削除しますか？')) {
-      deleteConversation(id);
-      setHistory(getConversationHistory());
-    }
+  const handleSelectConversation = (conv: ConversationItem) => {
+    setCurrentAnswer(conv.answer);
+    setCurrentImage(conv.image || null);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      {/* ヘッダー */}
-      <header className="border-b border-gray-700 bg-gray-900/50 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                🤖 AI サポートアシスタント
-              </h1>
-            </div>
+    <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col overflow-hidden">
+      {/* Top Bar - キャプチャボタン */}
+      <header className="bg-gray-900/80 backdrop-blur border-b border-gray-700 p-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              🤖 AI サポートアシスタント
+            </h1>
+          </div>
+
+          <div className="flex-1 max-w-2xl">
+            <QuickCaptureButton
+              onCapture={handleQuickCapture}
+              goal={activeGoal || undefined}
+              disabled={isLoading || !activeGoal}
+            />
+          </div>
+
+          <div className="flex-1 text-right">
             {remaining !== null && (
-              <div className="text-right">
+              <div>
                 <p className="text-xs text-gray-400">残り</p>
                 <p className="text-xl font-bold text-indigo-400">{remaining}回</p>
               </div>
@@ -154,21 +196,23 @@ export default function Home() {
         </div>
       </header>
 
-      {/* メインコンテンツ */}
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <div className="space-y-6">
-          {/* 1. ワンクリックキャプチャボタン（最上部） */}
-          <div className="rounded-2xl overflow-hidden shadow-2xl">
-            <QuickCaptureButton
-              onCapture={handleQuickCapture}
-              goal={goal || undefined}
-              disabled={isLoading}
-            />
-          </div>
+      {/* Main Content - 3分割 */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Left Panel - 目標リスト (25%) */}
+        <div className="w-1/4 min-w-[250px] max-w-[350px]">
+          <GoalList
+            goals={goals}
+            activeGoalId={activeGoal?.id || null}
+            onSelectGoal={handleSelectGoal}
+            onNewGoal={handleNewGoal}
+          />
+        </div>
 
-          {/* 2. AI回答エリア（次のステップ） */}
-          {(answer || isLoading) && (
-            <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 border border-gray-700">
+        {/* Center Panel - 会話履歴 (45%) */}
+        <div className="flex-1 flex flex-col">
+          {/* Answer Display Area */}
+          {(currentAnswer || isLoading) && (
+            <div className="bg-gray-900/50 border-b border-gray-700 p-6 overflow-y-auto max-h-[50%]">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center">
@@ -177,21 +221,20 @@ export default function Home() {
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
                     <p className="text-gray-300 text-lg font-medium">AIが画面を分析中...</p>
-                    <p className="text-gray-500 text-sm mt-2">どのボタンを押すべきか判断しています</p>
                   </div>
                 </div>
-              ) : answer ? (
+              ) : currentAnswer ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <span className="text-3xl">✨</span>
                     <h2 className="text-2xl font-bold text-white">次のステップ</h2>
                   </div>
-                  <AnswerDisplay answer={answer} />
-                  {image && (
+                  <AnswerDisplay answer={currentAnswer} />
+                  {currentImage && (
                     <div className="mt-4 pt-4 border-t border-gray-700">
                       <p className="text-xs text-gray-400 mb-2">解析した画像:</p>
                       <img
-                        src={image}
+                        src={currentImage}
                         alt="解析した画面"
                         className="max-w-md rounded-lg border border-gray-600"
                       />
@@ -202,114 +245,61 @@ export default function Home() {
             </div>
           )}
 
-          {/* エラー表示 */}
+          {/* Error Display */}
           {error && (
-            <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4">
+            <div className="bg-red-500/10 border-b border-red-500/50 p-4">
               <p className="text-red-400">{error}</p>
             </div>
           )}
 
-          {/* 3. 目標表示エリア（コンパクト） */}
-          <div className="bg-gradient-to-r from-indigo-900/20 to-purple-900/20 rounded-xl p-4 border border-indigo-700/30">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">🎯</span>
-              <div className="flex-1">
-                {isEditingGoal ? (
-                  <div className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-300">
-                      今日やりたいこと・目標を教えてください
-                    </label>
-                    <input
-                      type="text"
-                      value={goalInput}
-                      onChange={(e) => setGoalInput(e.target.value)}
-                      placeholder="例: Google APIの設定方法を知りたい、WordPressでブログを開設したい"
-                      className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      autoFocus
-                    />
-                    <button
-                      onClick={handleGoalSave}
-                      className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg transition-all font-medium"
-                    >
-                      設定完了
-                    </button>
-                  </div>
-                ) : goal ? (
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <p className="text-xs text-gray-400 mb-1">目標</p>
-                      <p className="text-white font-medium">{goal.objective}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setIsEditingGoal(true);
-                        setGoalInput(goal?.objective || '');
-                      }}
-                      className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
-                    >
-                      編集
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            {!isEditingGoal && goal && (
-              <p className="text-xs text-gray-400 mt-2 ml-11">
-                💡 AIがこの目標を考慮して、より的確なアドバイスを提供します
-              </p>
-            )}
+          {/* Conversation History */}
+          <div className="flex-1 overflow-hidden">
+            <ConversationPane
+              conversations={conversations}
+              onSelect={handleSelectConversation}
+            />
           </div>
 
-          {/* 4. 過去の会話履歴 */}
-          {history.length > 0 && (
-            <ConversationHistory
-              history={history}
-              onSelect={handleHistorySelect}
-              onDelete={handleHistoryDelete}
-            />
-          )}
-
-          {/* 初期状態のガイド */}
-          {!answer && !isLoading && history.length === 0 && (
-            <div className="bg-gray-800/30 rounded-2xl p-8 border border-dashed border-gray-600 text-center">
-              <div className="text-6xl mb-4">📸</div>
-              <h3 className="text-xl font-bold text-white mb-2">使い方</h3>
-              <ol className="text-gray-400 space-y-2 text-left max-w-md mx-auto">
-                <li className="flex gap-2">
-                  <span className="text-indigo-400 font-bold">1.</span>
-                  <span>目標を設定（任意）</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-indigo-400 font-bold">2.</span>
-                  <span>「📸 今の画面で次のステップを聞く」ボタンをクリック</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-indigo-400 font-bold">3.</span>
-                  <span>共有する画面/タブを選択</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-indigo-400 font-bold">4.</span>
-                  <span>AIが「どのボタンを押すべきか」具体的に教えます</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-indigo-400 font-bold">5.</span>
-                  <span>過去の会話が自動で保存され、AIがより的確にサポート</span>
-                </li>
-              </ol>
-              <p className="text-sm text-gray-500 mt-6">
-                ⚠️ 1日50回まで無料で利用できます
-              </p>
+          {/* Initial Guide */}
+          {!currentAnswer && !isLoading && conversations.length === 0 && activeGoal && (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center max-w-md">
+                <div className="text-6xl mb-4">📸</div>
+                <h3 className="text-xl font-bold text-white mb-2">使い方</h3>
+                <p className="text-gray-400 mb-4">
+                  上部の「📸 今の画面で次のステップを聞く」ボタンをクリックして、
+                  画面をキャプチャしてください。
+                </p>
+                <p className="text-sm text-gray-500">
+                  AIが現在のステップに合わせて、具体的な操作を教えてくれます。
+                </p>
+              </div>
             </div>
           )}
+        </div>
+
+
+        {/* Right Panel - 目標詳細 (30%) */}
+        <div className="w-1/3 min-w-[300px] max-w-[400px]">
+          <GoalDetails
+            goal={activeGoal}
+            onEdit={() => {/* TODO: 編集機能 */ }}
+            onDelete={() => {
+              if (activeGoal && confirm('この目標を削除しますか？')) {
+                deleteGoal(activeGoal.id);
+                loadGoals();
+              }
+            }}
+          />
         </div>
       </main>
 
-      {/* フッター */}
-      <footer className="border-t border-gray-700 mt-16">
-        <div className="max-w-6xl mx-auto px-4 py-6 text-center text-gray-500 text-sm">
-          <p>Powered by Google Gemini 2.5 Flash</p>
-        </div>
-      </footer>
+      {/* New Goal Modal */}
+      <NewGoalModal
+        isOpen={isNewGoalModalOpen}
+        onClose={() => setIsNewGoalModalOpen(false)}
+        onSave={handleSaveGoal}
+      />
     </div>
   );
 }

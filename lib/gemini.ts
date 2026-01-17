@@ -83,11 +83,7 @@ export async function analyzeImage(
     }
 }
 
-export interface Goal {
-    objective: string;
-    currentStatus: string;
-    deadline?: string;
-}
+import type { Goal } from './types';
 
 export interface ConversationHistoryItem {
     question: string;
@@ -121,9 +117,22 @@ A${index + 1}: ${item.answer.substring(0, 200)}${item.answer.length > 200 ? '...
     // 目標がある場合はコンテキストを追加
     const goalContext = goal
         ? `【ユーザーの目標】
-- 目標: ${goal.objective}
-- 現在の状況: ${goal.currentStatus}
-${goal.deadline ? `- 期限: ${goal.deadline}` : ''}
+目標: ${goal.title}
+${goal.description ? `詳細: ${goal.description}` : ''}
+
+【目標のステップ】
+${goal.steps.map((step, index) =>
+            step.completed
+                ? `✅ ${index + 1}. ${step.title} (完了)`
+                : index === goal.steps.findIndex(s => !s.completed)
+                    ? `▶️ ${index + 1}. ${step.title} (← 現在のステップ)`
+                    : `☐ ${index + 1}. ${step.title}`
+        ).join('\n')}
+
+進捗: ${goal.steps.filter(s => s.completed).length}/${goal.steps.length} 完了
+
+**重要**: ユーザーは今「${goal.steps.find(s => !s.completed)?.title || '最後のステップ'}」に取り組んでいます。
+このステップの達成に役立つ具体的なアドバイスを提供してください。
 
 `
         : '';

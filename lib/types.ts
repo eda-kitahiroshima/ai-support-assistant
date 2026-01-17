@@ -1,13 +1,27 @@
-export interface ConversationItem {
+export interface Step {
     id: string;
-    timestamp: number;
-    question: string;
-    answer: string;
-    image?: string; // Base64画像（任意）
+    title: string;
+    description: string;
+    completed: boolean;
+    completedAt?: number;
 }
 
 export interface Goal {
-    objective: string;
-    currentStatus: string;
-    deadline?: string;
+    id: string;
+    title: string;
+    description: string;
+    steps: Step[];
+    createdAt: number;
+    completedAt?: number;
+    isActive: boolean;
+}
+
+export interface ConversationItem {
+    id: string;
+    goalId: string; // どの目標に紐づくか
+    timestamp: number;
+    question: string;
+    answer: string;
+    image?: string;
+    completedSteps?: string[]; // この会話で完了したステップ
 }

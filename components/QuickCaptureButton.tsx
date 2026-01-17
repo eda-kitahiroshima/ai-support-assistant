@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { captureScreen, isScreenCaptureSupported } from '@/lib/screen-capture';
+import type { Goal } from '@/lib/types';
 
 interface QuickCaptureButtonProps {
     onCapture: (imageBase64: string, autoQuestion: string) => void;
-    goal?: { objective: string; currentStatus: string };
+    goal?: Goal;
     disabled?: boolean;
 }
 
