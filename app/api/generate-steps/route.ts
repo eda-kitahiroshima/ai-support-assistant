@@ -15,68 +15,65 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        console.log('Generating steps for goal:', goalTitle);
+
         const model = genAI.getGenerativeModel({
             model: 'gemini-2.5-flash',
-            tools: [{ googleSearchRetrieval: {} }], // Google検索機能を有効化
         });
 
-        const prompt = `あなたは目標達成のサポートをするアシスタントです。
-以下の目標を達成するために必要なステップを5-10個に分解してください。
+        // シンプルで確実なプロンプト
+        const prompt = `以下の目標を達成するために必要なステップを5-8個に分解してください。
 
-【目標】
-${goalTitle}
+目標: ${goalTitle}
+${description ? `詳細: ${description}` : ''}
 
-【詳細・現在の状況】
-${description || '特になし'}
-
-【重要な指示】
-1. まず、インターネットで「${goalTitle}」に関する最新の情報、チュートリアル、ベストプラクティスを検索してください
-2. 検索結果を基に、実践的で具体的なステップを作成してください
-3. 初心者でも実行可能な順序で並べてください
-4. 各ステップは簡潔で明確にしてください
-
-【要件】
-- 各ステップは具体的で実行可能なものにしてください
+要件:
+- 各ステップは具体的で実行可能にしてください
 - 初心者でもわかる表現を使ってください
-- ステップは時系列順に並べてください
-- 各ステップに短い説明を追加してください
-- 最新のツールやベストプラクティスを反映してください
+- 時系列順に並べてください
+- 最新のベストプラクティスを考慮してください
 
-【出力形式】
-以下のJSON形式で出力してください：
+以下のJSON配列形式で出力してください（コードブロックなし）:
 [
-  {
-    "title": "ステップのタイトル",
-    "description": "ステップの簡単な説明"
-  }
-]
-
-**重要**: JSONのみを出力し、マークダウンのコードブロック記号やその他の文章は含めないでください。`;
+  {"title": "ステップ1のタイトル", "description": "ステップ1の説明"},
+  {"title": "ステップ2のタイトル", "description": "ステップ2の説明"}
+]`;
 
         const result = await model.generateContent(prompt);
         const response = result.response.text();
 
-        // JSONを抽出（マークダウンコードブロックを除去）
+        console.log('AI Response:', response.substring(0, 200));
+
+        // JSONを抽出
         let jsonText = response.trim();
 
-        // ```json または ``` で囲まれている場合は除去
-        if (jsonText.startsWith('```json')) {
-            jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-        } else if (jsonText.startsWith('```')) {
-            jsonText = jsonText.replace(/```\n?/g, '');
-        }
-
-        // 先頭と末尾の空白を除去
+        // コードブロックを除去
+        jsonText = jsonText.replace(/```json\s*/g, '');
+        jsonText = jsonText.replace(/```\s*/g, '');
         jsonText = jsonText.trim();
 
+        // 最初の[と最後の]を探す
+        const firstBracket = jsonText.indexOf('[');
+        const lastBracket = jsonText.lastIndexOf(']');
+
+        if (firstBracket !== -1 && lastBracket !== -1) {
+            jsonText = jsonText.substring(firstBracket, lastBracket + 1);
+        }
+
+        console.log('Parsed JSON text:', jsonText.substring(0, 200));
+
         const stepsData = JSON.parse(jsonText);
+
+        console.log('Successfully parsed steps:', stepsData.length);
 
         return NextResponse.json({ steps: stepsData });
     } catch (error: any) {
         console.error('Failed to generate steps:', error);
+        console.error('Error details:', error.message);
 
-        // エラー時はデフォルトのステップを返す
+        // より詳細なエラーレスポンス
         return NextResponse.json({
+            error: 'ステップの生成に失敗しました: ' + error.message,
             steps: [
                 {
                     title: '目標の詳細を確認',
@@ -95,6 +92,6 @@ ${description || '特になし'}
                     description: '目標が達成できたか確認'
                 }
             ]
-        });
+        }, { status: 200 }); // エラーでも200を返してフォールバックステップを使用
     }
 }
