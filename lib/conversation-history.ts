@@ -1,54 +1,57 @@
 import { ConversationItem } from './types';
 
 const STORAGE_KEY = 'conversationHistory';
-const MAX_HISTORY = 100; // 最大保存件数
+
+/**
+ * IDを生成
+ */
+export function generateId(): string {
+    return `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
 
 /**
  * 会話を保存
  */
-export function saveConversation(item: ConversationItem): void {
+export function saveConversation(conversation: ConversationItem): void {
+    if (typeof window === 'undefined') return;
+
     try {
         const history = getConversationHistory();
+        history.unshift(conversation);
 
-        // 新しい会話を先頭に追加
-        history.unshift(item);
+        // 最大100件まで保存
+        const trimmed = history.slice(0, 100);
 
-        // 最大件数を超えたら古いものを削除
-        if (history.length > MAX_HISTORY) {
-            history.splice(MAX_HISTORY);
-        }
-
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
     } catch (error) {
         console.error('Failed to save conversation:', error);
     }
 }
 
 /**
- * 会話履歴を取得（最新N件）
+ * 全ての会話履歴を取得
  */
 export function getConversationHistory(limit?: number): ConversationItem[] {
+    if (typeof window === 'undefined') return [];
+
     try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return [];
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (!data) return [];
 
-        const history: ConversationItem[] = JSON.parse(stored);
-
-        if (limit && limit > 0) {
-            return history.slice(0, limit);
-        }
-
-        return history;
+        const history = JSON.parse(data);
+        return limit ? history.slice(0, limit) : history;
     } catch (error) {
-        console.error('Failed to get conversation history:', error);
+        console.error('Failed to load conversation history:', error);
         return [];
     }
 }
 
 /**
- * 会話履歴を全削除
+ * 会話履歴をクリア
  */
 export function clearConversationHistory(): void {
+    if (typeof window === 'undefined') return;
+
     try {
         localStorage.removeItem(STORAGE_KEY);
     } catch (error) {
@@ -60,6 +63,8 @@ export function clearConversationHistory(): void {
  * 特定の会話を削除
  */
 export function deleteConversation(id: string): void {
+    if (typeof window === 'undefined') return;
+
     try {
         const history = getConversationHistory();
         const filtered = history.filter(item => item.id !== id);
@@ -70,35 +75,20 @@ export function deleteConversation(id: string): void {
 }
 
 /**
- * UUIDを生成
- */
-export function generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-/**
- * 特定の目標の会話履歴を取得
+ * 目標IDで会話をフィルタリング
  */
 export function getConversationsByGoal(goalId: string, limit?: number): ConversationItem[] {
-    try {
-        const allHistory = getConversationHistory();
-        const filtered = allHistory.filter(item => item.goalId === goalId);
-
-        if (limit && limit > 0) {
-            return filtered.slice(0, limit);
-        }
-
-        return filtered;
-    } catch (error) {
-        console.error('Failed to get conversations by goal:', error);
-        return [];
-    }
+    const allHistory = getConversationHistory();
+    const filtered = allHistory.filter(item => item.goalId === goalId);
+    return limit ? filtered.slice(0, limit) : filtered;
 }
 
 /**
- * 特定の目標の会話を全て削除
+ * 目標IDに紐づく全ての会話を削除
  */
 export function deleteConversationsByGoal(goalId: string): void {
+    if (typeof window === 'undefined') return;
+
     try {
         const history = getConversationHistory();
         const filtered = history.filter(item => item.goalId !== goalId);
@@ -108,3 +98,16 @@ export function deleteConversationsByGoal(goalId: string): void {
     }
 }
 
+/**
+ * 全ての会話履歴を削除
+ */
+export function clearAllConversations(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+        console.log('All conversations cleared');
+    } catch (error) {
+        console.error('Failed to clear conversations:', error);
+    }
+}

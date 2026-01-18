@@ -1,17 +1,19 @@
 import { Goal, Step } from './types';
 
-const GOALS_STORAGE_KEY = 'goals';
+const STORAGE_KEY = 'goals';
 
 /**
  * 全ての目標を取得
  */
 export function getAllGoals(): Goal[] {
+    if (typeof window === 'undefined') return [];
+
     try {
-        const stored = localStorage.getItem(GOALS_STORAGE_KEY);
-        if (!stored) return [];
-        return JSON.parse(stored);
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (!data) return [];
+        return JSON.parse(data);
     } catch (error) {
-        console.error('Failed to get goals:', error);
+        console.error('Failed to load goals:', error);
         return [];
     }
 }
@@ -20,19 +22,19 @@ export function getAllGoals(): Goal[] {
  * 目標を保存
  */
 export function saveGoal(goal: Goal): void {
+    if (typeof window === 'undefined') return;
+
     try {
         const goals = getAllGoals();
-        const existingIndex = goals.findIndex(g => g.id === goal.id);
+        const index = goals.findIndex(g => g.id === goal.id);
 
-        if (existingIndex >= 0) {
-            // 既存の目標を更新
-            goals[existingIndex] = goal;
+        if (index >= 0) {
+            goals[index] = goal;
         } else {
-            // 新規目標を追加
             goals.push(goal);
         }
 
-        localStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(goals));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
     } catch (error) {
         console.error('Failed to save goal:', error);
     }
@@ -42,83 +44,63 @@ export function saveGoal(goal: Goal): void {
  * アクティブな目標を取得
  */
 export function getActiveGoal(): Goal | null {
-    try {
-        const goals = getAllGoals();
-        return goals.find(g => g.isActive) || null;
-    } catch (error) {
-        console.error('Failed to get active goal:', error);
-        return null;
-    }
+    const goals = getAllGoals();
+    return goals.find(g => g.isActive) || null;
 }
 
 /**
- * 目標をアクティブに設定
+ * アクティブな目標を設定
  */
 export function setActiveGoal(goalId: string): void {
-    try {
-        const goals = getAllGoals();
+    const goals = getAllGoals();
 
-        // 全ての目標を非アクティブに
-        goals.forEach(g => g.isActive = false);
+    goals.forEach(g => {
+        g.isActive = g.id === goalId;
+    });
 
-        // 指定した目標をアクティブに
-        const goal = goals.find(g => g.id === goalId);
-        if (goal) {
-            goal.isActive = true;
-        }
-
-        localStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(goals));
-    } catch (error) {
-        console.error('Failed to set active goal:', error);
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
 }
 
 /**
  * ステップの完了状態を更新
  */
-export function updateStepCompletion(
-    goalId: string,
-    stepId: string,
-    completed: boolean
-): void {
-    try {
-        const goals = getAllGoals();
-        const goal = goals.find(g => g.id === goalId);
+export function updateStepCompletion(goalId: string, stepId: string, completed: boolean): void {
+    const goals = getAllGoals();
+    const goal = goals.find(g => g.id === goalId);
 
-        if (!goal) return;
+    if (!goal) return;
 
-        const step = goal.steps.find(s => s.id === stepId);
-        if (!step) return;
+    const step = goal.steps.find(s => s.id === stepId);
+    if (!step) return;
 
-        step.completed = completed;
-        step.completedAt = completed ? Date.now() : undefined;
+    step.completed = completed;
+    step.completedAt = completed ? Date.now() : undefined;
 
-        // 全てのステップが完了したら目標も完了
-        const allCompleted = goal.steps.every(s => s.completed);
-        if (allCompleted) {
-            goal.completedAt = Date.now();
-        } else {
-            goal.completedAt = undefined;
-        }
-
-        localStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(goals));
-    } catch (error) {
-        console.error('Failed to update step completion:', error);
+    // 全てのステップが完了したら目標も完了にする
+    const allCompleted = goal.steps.every(s => s.completed);
+    if (allCompleted && !goal.completedAt) {
+        goal.completedAt = Date.now();
+    } else if (!allCompleted && goal.completedAt) {
+        goal.completedAt = undefined;
     }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
 }
 
 /**
- * 目標を削除（関連する会話も削除）
+ * 目標を削除
  */
 export function deleteGoal(goalId: string): void {
+    if (typeof window === 'undefined') return;
+
     try {
         const goals = getAllGoals();
         const filtered = goals.filter(g => g.id !== goalId);
-        localStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(filtered));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
 
         // 関連する会話も削除
-        import('./conversation-history').then(module => {
-            module.deleteConversationsByGoal(goalId);
+        import('./conversation-history').then(({ deleteConversationsByGoal }) => {
+            deleteConversationsByGoal(goalId);
         });
     } catch (error) {
         console.error('Failed to delete goal:', error);
@@ -126,7 +108,26 @@ export function deleteGoal(goalId: string): void {
 }
 
 /**
- * ユニークIDを生成
+ * 全ての目標を削除
+ */
+export function clearAllGoals(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+        console.log('All goals cleared');
+
+        // 全ての会話も削除
+        import('./conversation-history').then(({ clearAllConversations }) => {
+            clearAllConversations();
+        });
+    } catch (error) {
+        console.error('Failed to clear goals:', error);
+    }
+}
+
+/**
+ * 目標IDを生成
  */
 export function generateGoalId(): string {
     return `goal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

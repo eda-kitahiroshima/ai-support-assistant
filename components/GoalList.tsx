@@ -2,19 +2,22 @@
 
 import React from 'react';
 import { Goal } from '@/lib/types';
+import { clearAllGoals } from '@/lib/goal-management';
 
 interface GoalListProps {
     goals: Goal[];
     activeGoalId: string | null;
     onSelectGoal: (goalId: string) => void;
     onNewGoal: () => void;
+    onClearAll?: () => void;
 }
 
 export default function GoalList({
     goals,
     activeGoalId,
     onSelectGoal,
-    onNewGoal
+    onNewGoal,
+    onClearAll
 }: GoalListProps) {
     const sortedGoals = [...goals].sort((a, b) => {
         // アクティブな目標を最初に
@@ -31,6 +34,17 @@ export default function GoalList({
         if (goal.steps.length === 0) return 0;
         const completed = goal.steps.filter(s => s.completed).length;
         return Math.round((completed / goal.steps.length) * 100);
+    };
+
+    const handleClearAll = () => {
+        if (confirm('本当に全ての目標を削除しますか？\n\n全ての目標と会話履歴が削除されます。\nこの操作は取り消せません。')) {
+            clearAllGoals();
+            if (onClearAll) {
+                onClearAll();
+            } else {
+                window.location.reload();
+            }
+        }
     };
 
     return (
@@ -75,8 +89,7 @@ export default function GoalList({
                             <div className="mb-2">
                                 <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
                                     <div
-                                        className={`h-full transition-all ${progress === 100 ? 'bg-green-500' : 'bg-indigo-500'
-                                            }`}
+                                        className={`h-full transition-all ${progress === 100 ? 'bg-green-500' : 'bg-indigo-500'}`}
                                         style={{ width: `${progress}%` }}
                                     />
                                 </div>
@@ -96,8 +109,9 @@ export default function GoalList({
                 })}
             </div>
 
-            {/* New Goal Button */}
-            <div className="p-3 border-t border-gray-700">
+            {/* Action Buttons */}
+            <div className="p-3 border-t border-gray-700 space-y-2">
+                {/* New Goal Button */}
                 <button
                     onClick={onNewGoal}
                     className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg font-medium transition-all flex items-center justify-center gap-2"
@@ -105,6 +119,17 @@ export default function GoalList({
                     <span className="text-xl">+</span>
                     <span>新しい目標</span>
                 </button>
+
+                {/* Clear All Goals Button */}
+                {goals.length > 0 && (
+                    <button
+                        onClick={handleClearAll}
+                        className="w-full py-2 px-4 bg-gray-800 hover:bg-red-900 text-gray-400 hover:text-red-300 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border border-gray-700 hover:border-red-700"
+                    >
+                        <span>🗑️</span>
+                        <span>全ての目標を削除</span>
+                    </button>
+                )}
             </div>
         </div>
     );
