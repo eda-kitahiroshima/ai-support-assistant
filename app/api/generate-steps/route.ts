@@ -17,32 +17,48 @@ export async function POST(request: NextRequest) {
 
         console.log('Generating steps for goal:', goalTitle);
 
+        // Google Search groundingを有効化
         const model = genAI.getGenerativeModel({
             model: 'gemini-2.5-flash',
+            tools: [{ googleSearchRetrieval: {} }]
         });
 
-        // シンプルで確実なプロンプト
-        const prompt = `以下の目標を達成するために必要なステップを5-8個に分解してください。
+        // 検索を明示的に指示するプロンプト
+        const prompt = `あなたは目標達成のサポートをするアシスタントです。
 
-目標: ${goalTitle}
-${description ? `詳細: ${description}` : ''}
+【重要】まず、Google検索で「${goalTitle}」に関する最新の情報、チュートリアル、公式ドキュメント、ベストプラクティスを検索してください。
 
-要件:
-- 各ステップは具体的で実行可能にしてください
-- 初心者でもわかる表現を使ってください
-- 時系列順に並べてください
-- 最新のベストプラクティスを考慮してください
+【目標】
+${goalTitle}
 
-以下のJSON配列形式で出力してください（コードブロックなし）:
+${description ? `【詳細】\n${description}` : ''}
+
+【タスク】
+1. 上記の目標について、インターネットで検索して最新の情報を収集してください
+2. 検索結果を基に、実践的で具体的なステップ（5-8個）を作成してください
+3. 初心者でも実行可能な順序で並べてください
+4. 各ステップには、具体的なツール名、サービス名、技術名を含めてください
+
+【出力形式】
+以下のJSON配列のみを出力してください（説明文やコードブロック記号は不要）:
 [
-  {"title": "ステップ1のタイトル", "description": "ステップ1の説明"},
-  {"title": "ステップ2のタイトル", "description": "ステップ2の説明"}
+  {
+    "title": "ステップ1のタイトル",
+    "description": "具体的な説明（ツール名やサービス名を含む）"
+  },
+  {
+    "title": "ステップ2のタイトル",
+    "description": "具体的な説明"
+  }
 ]`;
+
+        console.log('Calling Gemini API with search grounding...');
 
         const result = await model.generateContent(prompt);
         const response = result.response.text();
 
-        console.log('AI Response:', response.substring(0, 200));
+        console.log('AI Response received, length:', response.length);
+        console.log('First 300 chars:', response.substring(0, 300));
 
         // JSONを抽出
         let jsonText = response.trim();
@@ -60,38 +76,52 @@ ${description ? `詳細: ${description}` : ''}
             jsonText = jsonText.substring(firstBracket, lastBracket + 1);
         }
 
-        console.log('Parsed JSON text:', jsonText.substring(0, 200));
+        console.log('Attempting to parse JSON...');
 
         const stepsData = JSON.parse(jsonText);
 
-        console.log('Successfully parsed steps:', stepsData.length);
+        if (!Array.isArray(stepsData) || stepsData.length === 0) {
+            throw new Error('Invalid steps data format');
+        }
+
+        console.log('Successfully generated', stepsData.length, 'steps');
 
         return NextResponse.json({ steps: stepsData });
+
     } catch (error: any) {
         console.error('Failed to generate steps:', error);
-        console.error('Error details:', error.message);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
 
-        // より詳細なエラーレスポンス
+        // エラー時はデフォルトのステップを返す
         return NextResponse.json({
-            error: 'ステップの生成に失敗しました: ' + error.message,
+            error: 'ステップ生成でエラーが発生しました: ' + error.message,
             steps: [
                 {
-                    title: '目標の詳細を確認',
-                    description: '何が必要かを調べる'
+                    title: '目標について調べる',
+                    description: 'インターネットで情報を検索し、何が必要かを確認する'
                 },
                 {
-                    title: '準備を始める',
-                    description: '必要なものを揃える'
+                    title: '必要なツールを準備',
+                    description: '開発環境やアカウントなど、必要なものを揃える'
                 },
                 {
-                    title: '実行する',
-                    description: '実際に作業を進める'
+                    title: '基礎を学ぶ',
+                    description: 'チュートリアルやドキュメントで基本的な使い方を学ぶ'
                 },
                 {
-                    title: '完了を確認',
-                    description: '目標が達成できたか確認'
+                    title: '小さく始める',
+                    description: '簡単なプロジェクトから実際に手を動かして試す'
+                },
+                {
+                    title: '機能を追加',
+                    description: '徐々に機能を追加して、目標に近づける'
+                },
+                {
+                    title: '完成と共有',
+                    description: '最終的な確認をして、必要に応じて公開・共有する'
                 }
             ]
-        }, { status: 200 }); // エラーでも200を返してフォールバックステップを使用
+        }, { status: 200 });
     }
 }
