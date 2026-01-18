@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import QuickCaptureButton from '@/components/QuickCaptureButton';
 import AnswerDisplay from '@/components/AnswerDisplay';
 import GoalList from '@/components/GoalList';
@@ -32,6 +32,13 @@ export default function Home() {
   const [error, setError] = useState('');
   const [isNewGoalModalOpen, setIsNewGoalModalOpen] = useState(false);
 
+  // リサイズ用の状態
+  const [leftWidth, setLeftWidth] = useState(25); // %
+  const [rightWidth, setRightWidth] = useState(30); // %
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // 初期データ読み込み
   useEffect(() => {
     loadGoals();
@@ -56,6 +63,45 @@ export default function Home() {
       setConversations([]);
     }
   }, [activeGoal?.id]);
+
+  // リサイズハンドラー
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const containerWidth = containerRef.current.offsetWidth;
+
+      if (isResizingLeft) {
+        const newLeftWidth = (e.clientX / containerWidth) * 100;
+        if (newLeftWidth >= 15 && newLeftWidth <= 40) {
+          setLeftWidth(newLeftWidth);
+        }
+      } else if (isResizingRight) {
+        const newRightWidth = ((containerWidth - e.clientX) / containerWidth) * 100;
+        if (newRightWidth >= 20 && newRightWidth <= 45) {
+          setRightWidth(newRightWidth);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    if (isResizingLeft || isResizingRight) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingLeft, isResizingRight]);
 
   const loadGoals = () => {
     const allGoals = getAllGoals();
@@ -166,10 +212,12 @@ export default function Home() {
     setCurrentImage(conv.image || null);
   };
 
+  const centerWidth = 100 - leftWidth - rightWidth;
+
   return (
     <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col overflow-hidden">
       {/* Top Bar - キャプチャボタン */}
-      <header className="bg-gray-900/80 backdrop-blur border-b border-gray-700 p-4">
+      <header className="bg-gray-900/80 backdrop-blur border-b border-gray-700 p-4 flex-shrink-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex-1">
             <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
@@ -196,10 +244,10 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Content - 3分割 */}
-      <main className="flex-1 flex overflow-hidden">
-        {/* Left Panel - 目標リスト (25%) */}
-        <div className="w-1/4 min-w-[250px] max-w-[350px]">
+      {/* Main Content - 3分割（リサイズ可能） */}
+      <main ref={containerRef} className="flex-1 flex overflow-hidden relative">
+        {/* Left Panel - 目標リスト */}
+        <div style={{ width: `${leftWidth}%` }} className="flex-shrink-0">
           <GoalList
             goals={goals}
             activeGoalId={activeGoal?.id || null}
@@ -208,8 +256,19 @@ export default function Home() {
           />
         </div>
 
-        {/* Center Panel - 会話履歴 (45%) */}
-        <div className="flex-1 flex flex-col">
+        {/* Left Resize Handle */}
+        <div
+          className="w-1 bg-gray-700 hover:bg-indigo-500 cursor-col-resize flex-shrink-0 transition-colors relative group"
+          onMouseDown={() => setIsResizingLeft(true)}
+        >
+          <div className="absolute inset-0 -mx-1" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-700 group-hover:bg-indigo-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <span className="text-xs text-white">⋮</span>
+          </div>
+        </div>
+
+        {/* Center Panel - 会話履歴 */}
+        <div style={{ width: `${centerWidth}%` }} className="flex-shrink-0 flex flex-col">
           {/* Answer Display Area */}
           {(currentAnswer || isLoading) && (
             <div className="bg-gray-900/50 border-b border-gray-700 p-6 overflow-y-auto max-h-[50%]">
@@ -278,9 +337,19 @@ export default function Home() {
           )}
         </div>
 
+        {/* Right Resize Handle */}
+        <div
+          className="w-1 bg-gray-700 hover:bg-indigo-500 cursor-col-resize flex-shrink-0 transition-colors relative group"
+          onMouseDown={() => setIsResizingRight(true)}
+        >
+          <div className="absolute inset-0 -mx-1" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-gray-700 group-hover:bg-indigo-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <span className="text-xs text-white">⋮</span>
+          </div>
+        </div>
 
-        {/* Right Panel - 目標詳細 (30%) */}
-        <div className="w-1/3 min-w-[300px] max-w-[400px]">
+        {/* Right Panel - 目標詳細 */}
+        <div style={{ width: `${rightWidth}%` }} className="flex-shrink-0">
           <GoalDetails
             goal={activeGoal}
             onEdit={() => {/* TODO: 編集機能 */ }}
