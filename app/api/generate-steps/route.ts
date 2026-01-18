@@ -23,32 +23,45 @@ export async function POST(request: NextRequest) {
             tools: [{ googleSearchRetrieval: {} }]
         });
 
-        // 検索を明示的に指示するプロンプト
-        const prompt = `あなたは目標達成のサポートをするアシスタントです。
-
-【重要】まず、Google検索で「${goalTitle}」に関する最新の情報、チュートリアル、公式ドキュメント、ベストプラクティスを検索してください。
+        // URLと具体的な手順を含むステップを生成するプロンプト
+        const prompt = `あなたは目標達成のサポートアシスタントです。以下の目標を達成するための詳細で具体的なステップを作成してください。
 
 【目標】
 ${goalTitle}
 
-${description ? `【詳細】\n${description}` : ''}
+${description ? `【詳細】\n${description}\n` : ''}
 
-【タスク】
-1. 上記の目標について、インターネットで検索して最新の情報を収集してください
-2. 検索結果を基に、実践的で具体的なステップ（5-8個）を作成してください
-3. 初心者でも実行可能な順序で並べてください
-4. 各ステップには、具体的なツール名、サービス名、技術名を含めてください
+【重要な指示】
+1. まず、Google検索で「${goalTitle}」について調べてください
+2. 公式サイト、チュートリアル、ダウンロードページを探してください
+3. 検索結果を基に、以下の観点で具体的なステップ（5-8個）を作成してください：
+   - 公式サイトや公式ドキュメントのURL
+   - 具体的なダウンロード方法やインストール手順
+   - 初期設定や環境構築の方法
+   - 簡単な使い方や実践例
+   - 具体的なツール名、サービス名、技術名
+
+【ステップの例】
+例えば、「WordPressでブログを開設」という目標なら：
+1. レンタルサーバーの公式サイト（例: https://www.xserver.ne.jp/）にアクセス
+2. アカウント登録とプラン選択（スタンダードプランを推奨）
+3. WordPressの自動インストール機能を使用
+4. 管理画面にログイン（ドメイン名/wp-admin）
+5. テーマを選択してインストール
+6. 最初の記事を作成して公開
+
+このように、URLや具体的な手順を含めてください。
 
 【出力形式】
-以下のJSON配列のみを出力してください（説明文やコードブロック記号は不要）:
+以下のJSON配列のみを出力（コードブロック記号は不要）:
 [
   {
-    "title": "ステップ1のタイトル",
-    "description": "具体的な説明（ツール名やサービス名を含む）"
+    "title": "公式サイトにアクセス",
+    "description": "https://example.com にアクセスして、ダウンロードページを開く"
   },
   {
-    "title": "ステップ2のタイトル",
-    "description": "具体的な説明"
+    "title": "ダウンロードとインストール",
+    "description": "インストーラーをダウンロードし、実行してセットアップを完了する"
   }
 ]`;
 
@@ -58,7 +71,7 @@ ${description ? `【詳細】\n${description}` : ''}
         const response = result.response.text();
 
         console.log('AI Response received, length:', response.length);
-        console.log('First 300 chars:', response.substring(0, 300));
+        console.log('First 500 chars:', response.substring(0, 500));
 
         // JSONを抽出
         let jsonText = response.trim();
@@ -77,6 +90,7 @@ ${description ? `【詳細】\n${description}` : ''}
         }
 
         console.log('Attempting to parse JSON...');
+        console.log('JSON text length:', jsonText.length);
 
         const stepsData = JSON.parse(jsonText);
 
@@ -98,28 +112,28 @@ ${description ? `【詳細】\n${description}` : ''}
             error: 'ステップ生成でエラーが発生しました: ' + error.message,
             steps: [
                 {
-                    title: '目標について調べる',
-                    description: 'インターネットで情報を検索し、何が必要かを確認する'
+                    title: '公式サイトを探す',
+                    description: 'Google検索で公式サイトやダウンロードページを探す'
                 },
                 {
-                    title: '必要なツールを準備',
-                    description: '開発環境やアカウントなど、必要なものを揃える'
+                    title: 'ダウンロードする',
+                    description: '公式サイトからインストーラーやファイルをダウンロード'
                 },
                 {
-                    title: '基礎を学ぶ',
-                    description: 'チュートリアルやドキュメントで基本的な使い方を学ぶ'
+                    title: 'インストールと初期設定',
+                    description: 'ダウンロードしたファイルを実行して、初期設定を完了'
                 },
                 {
-                    title: '小さく始める',
-                    description: '簡単なプロジェクトから実際に手を動かして試す'
+                    title: '基本的な使い方を学ぶ',
+                    description: 'チュートリアルやドキュメントで基本操作を確認'
                 },
                 {
-                    title: '機能を追加',
-                    description: '徐々に機能を追加して、目標に近づける'
+                    title: '簡単なプロジェクトを作る',
+                    description: 'Hello Worldなど、簡単なプロジェクトを作成して動作確認'
                 },
                 {
-                    title: '完成と共有',
-                    description: '最終的な確認をして、必要に応じて公開・共有する'
+                    title: '機能を追加する',
+                    description: 'チュートリアルを参考に、徐々に機能を追加'
                 }
             ]
         }, { status: 200 });
