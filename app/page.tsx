@@ -1,27 +1,41 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import QuickCaptureButton from '@/components/QuickCaptureButton';
 import AnswerDisplay from '@/components/AnswerDisplay';
 import GoalList from '@/components/GoalList';
 import GoalDetails from '@/components/GoalDetails';
 import ConversationPane from '@/components/ConversationPane';
 import NewGoalModal from '@/components/NewGoalModal';
+import UserProfile from '@/components/UserProfile';
 import { Goal, ConversationItem } from '@/lib/types';
 import {
   getAllGoals,
   getActiveGoal,
-  setActiveGoal,
-  saveGoal,
-  deleteGoal
+  setActiveGoal as setActiveGoalLocal,
+  saveGoal as saveGoalLocal,
+  deleteGoal as deleteGoalLocal
 } from '@/lib/goal-management';
 import {
   getConversationsByGoal,
-  saveConversation,
+  saveConversation as saveConversationLocal,
   generateId
 } from '@/lib/conversation-history';
+import {
+  getGoalsFromFirestore,
+  saveGoalToFirestore,
+  deleteGoalFromFirestore,
+  getConversationsFromFirestore,
+  saveConversationToFirestore
+} from '@/lib/firestore';
+import { migrateLocalStorageToFirestore, needsMigration } from '@/lib/migration';
 
 export default function Home() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
   const [goals, setGoals] = useState<Goal[]>([]);
   const [activeGoal, setActiveGoalState] = useState<Goal | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -31,38 +45,51 @@ export default function Home() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [isNewGoalModalOpen, setIsNewGoalModalOpen] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
 
   // リサイズ用の状態
-  const [leftWidth, setLeftWidth] = useState(25); // %
-  const [rightWidth, setRightWidth] = useState(30); // %
+  const [leftWidth, setLeftWidth] = useState(25);
+  const [rightWidth, setRightWidth] = useState(30);
   const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [isResizingRight, setIsResizingRight] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 初期データ読み込み
+  // 認証チェックとリダイレクト
   useEffect(() => {
-    loadGoals();
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
 
-    // 目標更新イベントリスナー（ステップチェック時）
+  // データ読み込みと移行
+  useEffect(() => {
+    if (user && !authLoading) {
+      loadData();
+    }
+  }, [user, authLoading]);
+
+  // 目標更新イベントリスナー
+  useEffect(() => {
     const handleGoalUpdate = () => {
-      loadGoals();
+      if (user) {
+        loadData();
+      }
     };
     window.addEventListener('goal-updated', handleGoalUpdate);
 
     return () => {
       window.removeEventListener('goal-updated', handleGoalUpdate);
     };
-  }, []);
+  }, [user]);
 
   // アクティブな目標が変わったら会話を読み込み
   useEffect(() => {
-    if (activeGoal) {
-      const convs = getConversationsByGoal(activeGoal.id);
-      setConversations(convs);
+    if (activeGoal && user) {
+      loadConversations(activeGoal.id);
     } else {
       setConversations([]);
     }
-  }, [activeGoal?.id]);
+  }, [activeGoal?.id, user]);
 
   // リサイズハンドラー
   useEffect(() => {
@@ -103,43 +130,89 @@ export default function Home() {
     };
   }, [isResizingLeft, isResizingRight]);
 
-  const loadGoals = () => {
-    const allGoals = getAllGoals();
-    setGoals(allGoals);
+  const loadData = async () => {
+    if (!user) return;
 
-    const active = getActiveGoal();
-    setActiveGoalState(active);
+    try {
+      // localStorage→Firestore移行チェック
+      if (needsMigration()) {
+        setIsMigrating(true);
+        await migrateLocalStorageToFirestore(user.uid);
+        setIsMigrating(false);
+      }
 
-    // 目標がない場合はモーダルを開く
-    if (allGoals.length === 0) {
-      setIsNewGoalModalOpen(true);
+      // Firestoreからデータ読み込み
+      const firestoreGoals = await getGoalsFromFirestore(user.uid);
+      setGoals(firestoreGoals);
+
+      const active = firestoreGoals.find(g => g.isActive) || null;
+      setActiveGoalState(active);
+
+      if (firestoreGoals.length === 0) {
+        setIsNewGoalModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      setError('データの読み込みに失敗しました');
     }
   };
 
-  const handleSelectGoal = (goalId: string) => {
-    setActiveGoal(goalId);
-    loadGoals();
-    setCurrentAnswer('');
-    setCurrentImage(null);
+  const loadConversations = async (goalId: string) => {
+    if (!user) return;
+
+    try {
+      const convs = await getConversationsFromFirestore(user.uid, goalId);
+      setConversations(convs);
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    }
+  };
+
+  const handleSelectGoal = async (goalId: string) => {
+    if (!user) return;
+
+    try {
+      // Firestoreで全目標を非アクティブに
+      const updatedGoals = goals.map(g => ({ ...g, isActive: g.id === goalId }));
+
+      for (const goal of updatedGoals) {
+        await saveGoalToFirestore(user.uid, goal);
+      }
+
+      setGoals(updatedGoals);
+      const active = updatedGoals.find(g => g.id === goalId) || null;
+      setActiveGoalState(active);
+      setCurrentAnswer('');
+      setCurrentImage(null);
+    } catch (error) {
+      console.error('Failed to select goal:', error);
+      setError('目標の選択に失敗しました');
+    }
   };
 
   const handleNewGoal = () => {
     setIsNewGoalModalOpen(true);
   };
 
-  const handleSaveGoal = (newGoal: Goal) => {
-    // 既存の全ての目標を非アクティブに
-    const allGoals = getAllGoals();
-    allGoals.forEach(g => {
-      g.isActive = false;
-      saveGoal(g);
-    });
+  const handleSaveGoal = async (newGoal: Goal) => {
+    if (!user) return;
 
-    // 新しい目標を保存
-    saveGoal(newGoal);
+    try {
+      // 既存の全ての目標を非アクティブに
+      const updatedGoals = goals.map(g => ({ ...g, isActive: false }));
+      for (const goal of updatedGoals) {
+        await saveGoalToFirestore(user.uid, goal);
+      }
 
-    loadGoals();
-    setIsNewGoalModalOpen(false);
+      // 新しい目標を保存
+      await saveGoalToFirestore(user.uid, newGoal);
+
+      await loadData();
+      setIsNewGoalModalOpen(false);
+    } catch (error) {
+      console.error('Failed to save goal:', error);
+      setError('目標の保存に失敗しました');
+    }
   };
 
   const handleQuickCapture = (capturedImage: string, autoQuestion: string) => {
@@ -148,7 +221,7 @@ export default function Home() {
   };
 
   const submitQuestion = async (img: string, q: string) => {
-    if (!activeGoal) {
+    if (!activeGoal || !user) {
       setError('先に目標を選択してください');
       return;
     }
@@ -158,8 +231,7 @@ export default function Home() {
     setCurrentAnswer('');
 
     try {
-      // 直近3件の会話を取得
-      const recentHistory = getConversationsByGoal(activeGoal.id, 3).map(item => ({
+      const recentHistory = conversations.slice(0, 3).map(item => ({
         question: item.question,
         answer: item.answer
       }));
@@ -195,10 +267,9 @@ export default function Home() {
         answer: data.response,
         image: img
       };
-      saveConversation(newConversation);
 
-      // 会話リストを更新
-      setConversations(getConversationsByGoal(activeGoal.id));
+      await saveConversationToFirestore(user.uid, newConversation);
+      await loadConversations(activeGoal.id);
 
     } catch (err: any) {
       setError(err.message || 'エラーが発生しました');
@@ -212,11 +283,37 @@ export default function Home() {
     setCurrentImage(conv.image || null);
   };
 
+  const handleDeleteGoal = async () => {
+    await loadData();
+  };
+
+  // ローディング中
+  if (authLoading || isMigrating) {
+    return (
+      <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <svg className="animate-spin h-16 w-16 text-indigo-400 mx-auto mb-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <p className="text-white text-xl">
+            {isMigrating ? 'データを移行中...' : '読み込み中...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未認証の場合は何も表示しない（リダイレクト中）
+  if (!user) {
+    return null;
+  }
+
   const centerWidth = 100 - leftWidth - rightWidth;
 
   return (
     <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col overflow-hidden">
-      {/* Top Bar - キャプチャボタン */}
+      {/* Top Bar */}
       <header className="bg-gray-900/80 backdrop-blur border-b border-gray-700 p-4 flex-shrink-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex-1">
@@ -233,26 +330,28 @@ export default function Home() {
             />
           </div>
 
-          <div className="flex-1 text-right">
+          <div className="flex-1 flex items-center justify-end gap-4">
             {remaining !== null && (
-              <div>
+              <div className="text-right">
                 <p className="text-xs text-gray-400">残り</p>
                 <p className="text-xl font-bold text-indigo-400">{remaining}回</p>
               </div>
             )}
+            <UserProfile />
           </div>
         </div>
       </header>
 
-      {/* Main Content - 3分割（リサイズ可能） */}
+      {/* Main Content */}
       <main ref={containerRef} className="flex-1 flex overflow-hidden relative">
-        {/* Left Panel - 目標リスト */}
+        {/* Left Panel */}
         <div style={{ width: `${leftWidth}%` }} className="flex-shrink-0">
           <GoalList
             goals={goals}
             activeGoalId={activeGoal?.id || null}
             onSelectGoal={handleSelectGoal}
             onNewGoal={handleNewGoal}
+            onDelete={handleDeleteGoal}
           />
         </div>
 
@@ -267,9 +366,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Center Panel - 会話履歴 */}
+        {/* Center Panel */}
         <div style={{ width: `${centerWidth}%` }} className="flex-shrink-0 flex flex-col">
-          {/* Answer Display Area */}
           {(currentAnswer || isLoading) && (
             <div className="bg-gray-900/50 border-b border-gray-700 p-6 overflow-y-auto max-h-[50%]">
               {isLoading ? (
@@ -304,14 +402,12 @@ export default function Home() {
             </div>
           )}
 
-          {/* Error Display */}
           {error && (
             <div className="bg-red-500/10 border-b border-red-500/50 p-4">
               <p className="text-red-400">{error}</p>
             </div>
           )}
 
-          {/* Conversation History */}
           <div className="flex-1 overflow-hidden">
             <ConversationPane
               conversations={conversations}
@@ -319,7 +415,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Initial Guide */}
           {!currentAnswer && !isLoading && conversations.length === 0 && activeGoal && (
             <div className="flex-1 flex items-center justify-center p-8">
               <div className="text-center max-w-md">
@@ -348,22 +443,21 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Panel - 目標詳細 */}
+        {/* Right Panel */}
         <div style={{ width: `${rightWidth}%` }} className="flex-shrink-0">
           <GoalDetails
             goal={activeGoal}
-            onEdit={() => {/* TODO: 編集機能 */ }}
-            onDelete={() => {
-              if (activeGoal && confirm('この目標を削除しますか？')) {
-                deleteGoal(activeGoal.id);
-                loadGoals();
+            onEdit={() => {/* TODO */ }}
+            onDelete={async () => {
+              if (activeGoal && user && confirm('この目標を削除しますか？')) {
+                await deleteGoalFromFirestore(user.uid, activeGoal.id);
+                await loadData();
               }
             }}
           />
         </div>
       </main>
 
-      {/* New Goal Modal */}
       <NewGoalModal
         isOpen={isNewGoalModalOpen}
         onClose={() => setIsNewGoalModalOpen(false)}
