@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeImage, analyzeImageWithGoal } from '@/lib/gemini';
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 
+// Vercelでの最大実行時間を設定（無料プランは10秒）
+export const maxDuration = 10;
+
 export async function POST(request: NextRequest) {
     try {
         // レート制限チェック
@@ -64,8 +67,25 @@ export async function POST(request: NextRequest) {
                 }
             }
         );
-    } catch (error) {
+    } catch (error: any) {
         console.error('API Error:', error);
+
+        // タイムアウトエラーの場合
+        if (error.message?.includes('timeout') || error.code === 'ETIMEDOUT') {
+            return NextResponse.json(
+                { error: 'AIの応答時間が長すぎました。もう一度試してください。' },
+                { status: 504 }
+            );
+        }
+
+        // Gemini APIエラーの場合
+        if (error.message?.includes('GoogleGenerativeAI') || error.message?.includes('API key')) {
+            return NextResponse.json(
+                { error: 'AI APIに接続できませんでした。しばらくしてから再試行してください。' },
+                { status: 502 }
+            );
+        }
+
         return NextResponse.json(
             { error: 'サーバーエラーが発生しました。しばらくしてから再試行してください。' },
             { status: 500 }

@@ -56,7 +56,12 @@ export async function analyzeImage(
         const mimeType = mimeMatch[1];
         const base64Data = mimeMatch[2];
 
-        const result = await model.generateContent([
+        // タイムアウト処理（8秒でタイムアウト、Vercelの10秒より短く）
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('timeout')), 8000);
+        });
+
+        const generatePromise = model.generateContent([
             `${systemPrompt}\n\nユーザーの質問: ${question}`,
             {
                 inlineData: {
@@ -66,10 +71,16 @@ export async function analyzeImage(
             },
         ]);
 
+        const result = await Promise.race([generatePromise, timeoutPromise]) as any;
         const response = result.response;
         return response.text();
     } catch (error: any) {
         console.error('Gemini API Error:', error);
+
+        // タイムアウトエラー
+        if (error.message === 'timeout') {
+            throw new Error('AIの応答時間が長すぎました。もう一度試してください。');
+        }
 
         // より詳細なエラーメッセージ
         if (error.message?.includes('API key')) {
@@ -182,7 +193,12 @@ ${goal.steps.map((step, index) =>
         const mimeType = mimeMatch[1];
         const base64Data = mimeMatch[2];
 
-        const result = await model.generateContent([
+        // タイムアウト処理（8秒でタイムアウト）
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('timeout')), 8000);
+        });
+
+        const generatePromise = model.generateContent([
             `${historyContext}${goalContext}${systemPrompt}\n\nユーザーの質問: ${question}`,
             {
                 inlineData: {
@@ -192,10 +208,16 @@ ${goal.steps.map((step, index) =>
             },
         ]);
 
+        const result = await Promise.race([generatePromise, timeoutPromise]) as any;
         const response = result.response;
         return response.text();
     } catch (error: any) {
         console.error('Gemini API Error:', error);
+
+        // タイムアウトエラー
+        if (error.message === 'timeout') {
+            throw new Error('AIの応答時間が長すぎました。もう一度試してください。');
+        }
 
         // より詳細なエラーメッセージ
         if (error.message?.includes('API key')) {
