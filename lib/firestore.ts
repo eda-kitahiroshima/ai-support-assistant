@@ -52,18 +52,12 @@ export async function saveGoalToFirestore(userId: string, goal: Goal): Promise<v
         const goalRef = doc(db, 'users', userId, 'goals', goal.id);
         console.log('🟡 goalRefパス:', goalRef.path);
 
-        // タイムアウト処理（5秒）
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Firestore save timeout (5秒)')), 5000);
-        });
-
-        const savePromise = setDoc(goalRef, {
+        console.log('🟡 Firestore書き込み開始');
+        await setDoc(goalRef, {
             ...goal,
             createdAt: goal.createdAt,
             completedAt: goal.completedAt || null,
         });
-
-        await Promise.race([savePromise, timeoutPromise]);
         console.log('✅ saveGoalToFirestore完了');
     } catch (error: any) {
         console.error('❌ Failed to save goal to Firestore:', error);
