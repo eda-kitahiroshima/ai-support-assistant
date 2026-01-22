@@ -61,14 +61,22 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
         };
 
         setIsGenerating(true); // 保存中の表示
-        await onSave(newGoal); // 保存完了を待つ
-        setIsGenerating(false);
+        try {
+            await onSave(newGoal); // 保存完了を待つ
 
-        // Reset form
-        setTitle('');
-        setDescription('');
-        setSteps([]);
-        setError('');
+            // Reset form
+            setTitle('');
+            setDescription('');
+            setSteps([]);
+            setError('');
+
+            // モーダルを閉じる
+            onClose();
+        } catch (error) {
+            setError('保存に失敗しました');
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const handleStepEdit = (index: number, field: 'title' | 'description', value: string) => {
