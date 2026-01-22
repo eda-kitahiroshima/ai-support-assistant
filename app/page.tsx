@@ -210,12 +210,16 @@ export default function Home() {
       console.log('🟢 Firestoreに保存開始:', newGoal.title);
       await saveGoalToFirestore(user.uid, newGoal);
       console.log('✅ Firestoreに保存完了');
+      console.log('🟢 次の処理を開始');
 
       console.log('🟢 State更新開始');
       const nextGoals = [...updatedGoals, newGoal];
+      console.log('🟢 nextGoals作成:', nextGoals.length);
       setGoals(nextGoals);
+      console.log('🟢 setGoals完了');
       setActiveGoalState(newGoal);
       console.log('✅ State更新完了');
+      console.log('🟢 handleSaveGoal全体完了');
 
       // モーダルクローズはNewGoalModal側で行う
     } catch (error) {
