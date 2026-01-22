@@ -17,6 +17,7 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
     const [steps, setSteps] = useState<Step[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [error, setError] = useState('');
+    const [isSaved, setIsSaved] = useState(false);
 
     // モーダルが閉じられたらstateをリセット
     React.useEffect(() => {
@@ -26,6 +27,7 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
             setSteps([]);
             setError('');
             setIsGenerating(false);
+            setIsSaved(false);
         }
     }, [isOpen]);
 
@@ -71,18 +73,12 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
             isActive: true,
         };
 
-        setIsGenerating(true); // 保存中の表示
+        setIsGenerating(true);
         try {
-            await onSave(newGoal); // 保存完了を待つ
+            await onSave(newGoal);
 
-            // Reset form
-            setTitle('');
-            setDescription('');
-            setSteps([]);
-            setError('');
-
-            // モーダルを閉じる
-            onClose();
+            // 保存成功！メッセージを表示（自動クローズしない）
+            setIsSaved(true);
         } catch (error) {
             setError('保存に失敗しました');
         } finally {
