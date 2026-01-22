@@ -18,6 +18,17 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
     const [isGenerating, setIsGenerating] = useState(false);
     const [error, setError] = useState('');
 
+    // モーダルが閉じられたらstateをリセット
+    React.useEffect(() => {
+        if (!isOpen) {
+            setTitle('');
+            setDescription('');
+            setSteps([]);
+            setError('');
+            setIsGenerating(false);
+        }
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const handleGenerateSteps = async () => {

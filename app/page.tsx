@@ -130,7 +130,7 @@ export default function Home() {
     };
   }, [isResizingLeft, isResizingRight]);
 
-  const loadData = async () => {
+  const loadData = async (skipModalOpen = false) => {
     if (!user) return;
 
     try {
@@ -148,7 +148,8 @@ export default function Home() {
       const active = firestoreGoals.find(g => g.isActive) || null;
       setActiveGoalState(active);
 
-      if (firestoreGoals.length === 0) {
+      // skipModalOpen が false かつ データがない場合のみモーダルを開く
+      if (!skipModalOpen && firestoreGoals.length === 0) {
         setIsNewGoalModalOpen(true);
       }
     } catch (error) {
