@@ -200,15 +200,20 @@ export default function Home() {
     try {
       // 既存の全ての目標を非アクティブに
       const updatedGoals = goals.map(g => ({ ...g, isActive: false }));
-      for (const goal of updatedGoals) {
-        await saveGoalToFirestore(user.uid, goal);
-      }
+
+      // パフォーマンス改善: Promise.allで並列実行
+      await Promise.all(
+        updatedGoals.map(goal => saveGoalToFirestore(user.uid, goal))
+      );
 
       // 新しい目標を保存
       await saveGoalToFirestore(user.uid, newGoal);
 
-      // モーダル自動オープンをスキップしてデータ再読み込み
-      await loadData(true);
+      // Stateを直接更新（loadDataを呼ばない）
+      const nextGoals = [...updatedGoals, newGoal];
+      setGoals(nextGoals);
+      setActiveGoalState(newGoal);
+
       // モーダルクローズはNewGoalModal側で行う
     } catch (error) {
       console.error('Failed to save goal:', error);
