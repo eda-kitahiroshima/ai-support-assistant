@@ -207,7 +207,8 @@ export default function Home() {
       // 新しい目標を保存
       await saveGoalToFirestore(user.uid, newGoal);
 
-      await loadData();
+      // モーダル自動オープンをスキップしてデータ再読み込み
+      await loadData(true);
       // モーダルクローズはNewGoalModal側で行う
     } catch (error) {
       console.error('Failed to save goal:', error);
