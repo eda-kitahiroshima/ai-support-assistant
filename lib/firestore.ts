@@ -41,19 +41,32 @@ export async function getGoalsFromFirestore(userId: string): Promise<Goal[]> {
  * 目標をFirestoreに保存
  */
 export async function saveGoalToFirestore(userId: string, goal: Goal): Promise<void> {
+    console.log('🟡 saveGoalToFirestore開始:', { userId, goalId: goal.id, title: goal.title });
+
     if (!db) {
+        console.error('❌ Firestoreが初期化されていません');
         throw new Error('Firestore is not configured');
     }
 
     try {
         const goalRef = doc(db, 'users', userId, 'goals', goal.id);
-        await setDoc(goalRef, {
+        console.log('🟡 goalRefパス:', goalRef.path);
+
+        // タイムアウト処理（5秒）
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Firestore save timeout (5秒)')), 5000);
+        });
+
+        const savePromise = setDoc(goalRef, {
             ...goal,
             createdAt: goal.createdAt,
             completedAt: goal.completedAt || null,
         });
-    } catch (error) {
-        console.error('Failed to save goal to Firestore:', error);
+
+        await Promise.race([savePromise, timeoutPromise]);
+        console.log('✅ saveGoalToFirestore完了');
+    } catch (error: any) {
+        console.error('❌ Failed to save goal to Firestore:', error);
         throw error;
     }
 }
