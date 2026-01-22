@@ -22,7 +22,7 @@ export async function analyzeImage(
     question: string
 ): Promise<string> {
     const model = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash',
     });
 
     const systemPrompt = `あなたはPC操作のサポート係です。ユーザーのスクリーンショットと質問を見て、以下の形式で回答してください：
