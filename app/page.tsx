@@ -196,7 +196,7 @@ export default function Home() {
   };
 
   const handleSaveGoal = async (newGoal: Goal) => {
-    console.log('🟢 handleSaveGoal開始');
+    console.log('🟢 handleSaveGoal開始（楽観的更新モード）');
     if (!user) {
       console.log('❌ userがnull');
       return;
@@ -207,21 +207,24 @@ export default function Home() {
       const updatedGoals = goals.map(g => ({ ...g, isActive: false }));
       console.log('🟢 updatedGoals数:', updatedGoals.length);
 
-      console.log('🟢 Firestoreに保存開始:', newGoal.title);
-      await saveGoalToFirestore(user.uid, newGoal);
-      console.log('✅ Firestoreに保存完了');
-      console.log('🟢 次の処理を開始');
-
-      console.log('🟢 State更新開始');
+      // 楽観的更新：Firestore保存を待たずに即座にUIを更新
+      console.log('🟢 State更新開始（楽観的）');
       const nextGoals = [...updatedGoals, newGoal];
-      console.log('🟢 nextGoals作成:', nextGoals.length);
       setGoals(nextGoals);
-      console.log('🟢 setGoals完了');
       setActiveGoalState(newGoal);
       console.log('✅ State更新完了');
-      console.log('🟢 handleSaveGoal全体完了');
 
-      // モーダルクローズはNewGoalModal側で行う
+      // Firestoreへの保存はバックグラウンドで実行（awaitしない）
+      console.log('🟢 Firestoreに保存開始（バックグラウンド）:', newGoal.title);
+      saveGoalToFirestore(user.uid, newGoal)
+        .then(() => console.log('✅ Firestore保存完了（バックグラウンド）'))
+        .catch((error) => {
+          console.error('❌ Firestore保存エラー（バックグラウンド）:', error);
+          // エラーが発生しても、既にUIは更新済みなのでユーザーには影響しない
+        });
+
+      console.log('🟢 handleSaveGoal完了（即座にreturn）');
+      // 即座にreturnして、NewGoalModalに成功を伝える
     } catch (error) {
       console.error('❌ handleSaveGoalエラー:', error);
       setError('目標の保存に失敗しました');
