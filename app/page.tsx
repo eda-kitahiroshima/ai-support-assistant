@@ -199,15 +199,10 @@ export default function Home() {
     if (!user) return;
 
     try {
-      // 既存の全ての目標を非アクティブに
+      // 既存の全ての目標を非アクティブに（Stateのみ）
       const updatedGoals = goals.map(g => ({ ...g, isActive: false }));
 
-      // パフォーマンス改善: Promise.allで並列実行
-      await Promise.all(
-        updatedGoals.map(goal => saveGoalToFirestore(user.uid, goal))
-      );
-
-      // 新しい目標を保存
+      // 新しい目標を保存（Firestoreへの書き込みは1回だけ！）
       await saveGoalToFirestore(user.uid, newGoal);
 
       // Stateを直接更新（loadDataを呼ばない）
