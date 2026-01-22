@@ -196,25 +196,32 @@ export default function Home() {
   };
 
   const handleSaveGoal = async (newGoal: Goal) => {
-    if (!user) return;
+    console.log('🟢 handleSaveGoal開始');
+    if (!user) {
+      console.log('❌ userがnull');
+      return;
+    }
 
     try {
-      // 既存の全ての目標を非アクティブに（Stateのみ）
+      console.log('🟢 既存目標を非アクティブ化（Stateのみ）');
       const updatedGoals = goals.map(g => ({ ...g, isActive: false }));
+      console.log('🟢 updatedGoals数:', updatedGoals.length);
 
-      // 新しい目標を保存（Firestoreへの書き込みは1回だけ！）
+      console.log('🟢 Firestoreに保存開始:', newGoal.title);
       await saveGoalToFirestore(user.uid, newGoal);
+      console.log('✅ Firestoreに保存完了');
 
-      // Stateを直接更新（loadDataを呼ばない）
+      console.log('🟢 State更新開始');
       const nextGoals = [...updatedGoals, newGoal];
       setGoals(nextGoals);
       setActiveGoalState(newGoal);
+      console.log('✅ State更新完了');
 
       // モーダルクローズはNewGoalModal側で行う
     } catch (error) {
-      console.error('Failed to save goal:', error);
+      console.error('❌ handleSaveGoalエラー:', error);
       setError('目標の保存に失敗しました');
-      throw error; // エラーをNewGoalModalに伝播
+      throw error;
     }
   };
 
