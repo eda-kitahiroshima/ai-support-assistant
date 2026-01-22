@@ -16,8 +16,9 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
     const [description, setDescription] = useState('');
     const [steps, setSteps] = useState<Step[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
     const [error, setError] = useState('');
-    const [isSaved, setIsSaved] = useState(false);
 
     // モーダルが閉じられたらstateをリセット
     React.useEffect(() => {
@@ -27,7 +28,8 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
             setSteps([]);
             setError('');
             setIsGenerating(false);
-            setIsSaved(false);
+            setIsSaving(false);
+            setSaveSuccess(false);
         }
     }, [isOpen]);
 
@@ -47,13 +49,15 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
             setSteps(generatedSteps);
         } catch (err: any) {
             setError('ステップの生成中にエラーが発生しました');
-            console.error(err);
+            console.error('Step generation error:', err);
         } finally {
             setIsGenerating(false);
         }
     };
 
     const handleSave = async () => {
+        console.log('🔵 handleSave開始');
+
         if (!title.trim()) {
             setError('目標タイトルを入力してください');
             return;
@@ -73,16 +77,22 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
             isActive: true,
         };
 
-        setIsGenerating(true);
-        try {
-            await onSave(newGoal);
+        console.log('🔵 保存開始:', newGoal.title);
+        setIsSaving(true);
+        setError('');
 
-            // 保存成功！メッセージを表示（自動クローズしない）
-            setIsSaved(true);
-        } catch (error) {
-            setError('保存に失敗しました');
-        } finally {
-            setIsGenerating(false);
+        try {
+            console.log('🔵 onSave呼び出し');
+            await onSave(newGoal);
+            console.log('✅ onSave完了');
+
+            // 保存成功
+            setSaveSuccess(true);
+            setIsSaving(false);
+        } catch (error: any) {
+            console.error('❌ 保存エラー:', error);
+            setError(`保存に失敗しました: ${error.message || '不明なエラー'}`);
+            setIsSaving(false);
         }
     };
 
@@ -115,117 +125,8 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Title Input */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                            目標タイトル *
-                        </label>
-                        <input
-                            type="text"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            placeholder="例: WordPressでブログを開設したい"
-                            className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            autoFocus
-                        />
-                    </div>
-
-                    {/* Description Input */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                            詳細・現在の状況（任意）
-                        </label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="例: PCは持っているが何もしていない状態です"
-                            rows={3}
-                            className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                        />
-                    </div>
-
-                    {/* Generate Button */}
-                    {steps.length === 0 && (
-                        <button
-                            onClick={handleGenerateSteps}
-                            disabled={isGenerating}
-                            className="w-full py-4 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {isGenerating ? (
-                                <>
-                                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                    </svg>
-                                    <span>AIがステップを生成中...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span>🤖</span>
-                                    <span>AIでステップを自動生成</span>
-                                </>
-                            )}
-                        </button>
-                    )}
-
-                    {/* Generated Steps */}
-                    {steps.length > 0 && (
-                        <div>
-                            <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-lg font-semibold text-white">
-                                    生成されたステップ ({steps.length}個)
-                                </h3>
-                                <button
-                                    onClick={handleGenerateSteps}
-                                    disabled={isGenerating}
-                                    className="text-sm text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
-                                >
-                                    再生成
-                                </button>
-                            </div>
-
-                            <div className="space-y-3">
-                                {steps.map((step, index) => (
-                                    <div key={step.id} className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
-                                        <div className="flex items-start gap-3">
-                                            <span className="text-lg font-bold text-indigo-400">{index + 1}</span>
-                                            <div className="flex-1">
-                                                <input
-                                                    type="text"
-                                                    value={step.title}
-                                                    onChange={(e) => handleStepEdit(index, 'title', e.target.value)}
-                                                    className="w-full px-2 py-1 bg-transparent border-b border-gray-600 text-white focus:outline-none focus:border-indigo-500 mb-2"
-                                                />
-                                                <textarea
-                                                    value={step.description}
-                                                    onChange={(e) => handleStepEdit(index, 'description', e.target.value)}
-                                                    rows={2}
-                                                    className="w-full px-2 py-1 bg-transparent border-b border-gray-600 text-sm text-gray-400 focus:outline-none focus:border-indigo-500 resize-none"
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => handleStepDelete(index)}
-                                                className="text-gray-500 hover:text-red-400 text-xl"
-                                                title="削除"
-                                            >
-                                                ×
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Error Message */}
-                    {error && (
-                        <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400">
-                            {error}
-                        </div>
-                    )}
-
                     {/* Success Message */}
-                    {isSaved && (
+                    {saveSuccess && (
                         <div className="p-4 bg-green-500/10 border border-green-500/50 rounded-xl text-green-400">
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-xl">✅</span>
@@ -236,6 +137,124 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
                             </p>
                         </div>
                     )}
+
+                    {!saveSuccess && (
+                        <>
+                            {/* Title Input */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    目標タイトル *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    placeholder="例: WordPressでブログを開設したい"
+                                    className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    autoFocus
+                                    disabled={isSaving}
+                                />
+                            </div>
+
+                            {/* Description Input */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    詳細・現在の状況（任意）
+                                </label>
+                                <textarea
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    placeholder="例: PCは持っているが何もしていない状態です"
+                                    rows={3}
+                                    className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                                    disabled={isSaving}
+                                />
+                            </div>
+
+                            {/* Generate Button */}
+                            {steps.length === 0 && (
+                                <button
+                                    onClick={handleGenerateSteps}
+                                    disabled={isGenerating || isSaving}
+                                    className="w-full py-4 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                    {isGenerating ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                            </svg>
+                                            <span>AIがステップを生成中...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>🤖</span>
+                                            <span>AIでステップを自動生成</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
+
+                            {/* Generated Steps */}
+                            {steps.length > 0 && (
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="text-lg font-semibold text-white">
+                                            生成されたステップ ({steps.length}個)
+                                        </h3>
+                                        <button
+                                            onClick={handleGenerateSteps}
+                                            disabled={isGenerating || isSaving}
+                                            className="text-sm text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
+                                        >
+                                            再生成
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {steps.map((step, index) => (
+                                            <div key={step.id} className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+                                                <div className="flex items-start gap-3">
+                                                    <span className="text-lg font-bold text-indigo-400">{index + 1}</span>
+                                                    <div className="flex-1">
+                                                        <input
+                                                            type="text"
+                                                            value={step.title}
+                                                            onChange={(e) => handleStepEdit(index, 'title', e.target.value)}
+                                                            className="w-full px-2 py-1 bg-transparent border-b border-gray-600 text-white focus:outline-none focus:border-indigo-500 mb-2"
+                                                            disabled={isSaving}
+                                                        />
+                                                        <textarea
+                                                            value={step.description}
+                                                            onChange={(e) => handleStepEdit(index, 'description', e.target.value)}
+                                                            rows={2}
+                                                            className="w-full px-2 py-1 bg-transparent border-b border-gray-600 text-sm text-gray-400 focus:outline-none focus:border-indigo-500 resize-none"
+                                                            disabled={isSaving}
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleStepDelete(index)}
+                                                        className="text-gray-500 hover:text-red-400 text-xl"
+                                                        title="削除"
+                                                        disabled={isSaving}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* Error Message */}
+                    {error && (
+                        <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400">
+                            {error}
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer */}
@@ -244,15 +263,15 @@ export default function NewGoalModal({ isOpen, onClose, onSave }: NewGoalModalPr
                         onClick={onClose}
                         className="flex-1 py-3 px-6 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-medium transition-all"
                     >
-                        {isSaved ? '閉じる' : 'キャンセル'}
+                        {saveSuccess ? '閉じる' : 'キャンセル'}
                     </button>
-                    {!isSaved && (
+                    {!saveSuccess && (
                         <button
                             onClick={handleSave}
-                            disabled={steps.length === 0 || isGenerating}
+                            disabled={steps.length === 0 || isSaving}
                             className="flex-1 py-3 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                            {isGenerating ? (
+                            {isSaving ? (
                                 <>
                                     <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
