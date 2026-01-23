@@ -1,0 +1,22 @@
+# 依存関係
+node_modules
+npm-debug.log
+
+# Next.js
+.next
+out
+
+# 環境変数
+.env
+.env.local
+.env*.local
+
+# Git
+.git
+.gitignore
+
+# その他
+README.md
+.vscode
+.DS_Store
+*.md
