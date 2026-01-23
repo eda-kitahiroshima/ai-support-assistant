@@ -56,12 +56,8 @@ export async function analyzeImage(
         const mimeType = mimeMatch[1];
         const base64Data = mimeMatch[2];
 
-        // タイムアウト処理（8秒でタイムアウト、Vercelの10秒より短く）
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('timeout')), 8000);
-        });
-
-        const generatePromise = model.generateContent([
+        // ストリーミングAPIを使用（タイムアウトなし）
+        const result = await model.generateContentStream([
             `${systemPrompt}\n\nユーザーの質問: ${question}`,
             {
                 inlineData: {
@@ -71,9 +67,14 @@ export async function analyzeImage(
             },
         ]);
 
-        const result = await Promise.race([generatePromise, timeoutPromise]) as any;
-        const response = result.response;
-        return response.text();
+        // ストリーミングレスポンスを結合
+        let fullText = '';
+        for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            fullText += chunkText;
+        }
+
+        return fullText;
     } catch (error: any) {
         console.error('Gemini API Error:', error);
 
