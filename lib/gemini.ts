@@ -194,13 +194,11 @@ ${goal.steps.map((step, index) =>
         const mimeType = mimeMatch[1];
         const base64Data = mimeMatch[2];
 
-        // タイムアウト処理（8秒でタイムアウト）
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('timeout')), 8000);
-        });
+        const fullPrompt = `${systemPrompt}\n${goalContext}${historyContext}\nユーザーの質問: ${question}`;
 
-        const generatePromise = model.generateContent([
-            `${historyContext}${goalContext}${systemPrompt}\n\nユーザーの質問: ${question}`,
+        // ストリーミングAPIを使用
+        const result = await model.generateContentStream([
+            fullPrompt,
             {
                 inlineData: {
                     data: base64Data,
@@ -209,11 +207,16 @@ ${goal.steps.map((step, index) =>
             },
         ]);
 
-        const result = await Promise.race([generatePromise, timeoutPromise]) as any;
-        const response = result.response;
-        return response.text();
+        // ストリーミングレスポンスを結合
+        let fullText = '';
+        for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            fullText += chunkText;
+        }
+
+        return fullText;
     } catch (error: any) {
-        console.error('Gemini API Error:', error);
+        console.error('Gemini API Error (with goal):', error);
 
         // タイムアウトエラー
         if (error.message === 'timeout') {
