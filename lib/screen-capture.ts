@@ -23,20 +23,43 @@ export async function captureScreen(): Promise<string> {
             const imageCapture = new (window as any).ImageCapture(track);
             const bitmap = await imageCapture.grabFrame();
 
-            // Canvas に描画
+            // 元の画像サイズ
+            const originalWidth = bitmap.width;
+            const originalHeight = bitmap.height;
+
+            // 最大サイズを設定（1280x720）
+            const MAX_WIDTH = 1280;
+            const MAX_HEIGHT = 720;
+
+            let targetWidth = originalWidth;
+            let targetHeight = originalHeight;
+
+            // アスペクト比を維持しながら縮小
+            if (originalWidth > MAX_WIDTH || originalHeight > MAX_HEIGHT) {
+                const widthRatio = MAX_WIDTH / originalWidth;
+                const heightRatio = MAX_HEIGHT / originalHeight;
+                const ratio = Math.min(widthRatio, heightRatio);
+
+                targetWidth = Math.floor(originalWidth * ratio);
+                targetHeight = Math.floor(originalHeight * ratio);
+            }
+
+            // Canvas に描画（リサイズ）
             const canvas = document.createElement('canvas');
-            canvas.width = bitmap.width;
-            canvas.height = bitmap.height;
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
             const ctx = canvas.getContext('2d');
             if (!ctx) throw new Error('Canvas context error');
 
-            ctx.drawImage(bitmap, 0, 0);
+            ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
 
             // ストリームを停止
             stream.getTracks().forEach(track => track.stop());
 
-            // Base64に変換
-            return canvas.toDataURL('image/png');
+            console.log(`📸 画像圧縮: ${originalWidth}x${originalHeight} → ${targetWidth}x${targetHeight}`);
+
+            // Base64に変換（JPEG、品質80%）
+            return canvas.toDataURL('image/jpeg', 0.8);
         }
 
         // ImageCapture非対応の場合の代替方法
@@ -55,21 +78,41 @@ export async function captureScreen(): Promise<string> {
         // 少し待ってからキャプチャ（フレームが安定するまで）
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Canvas に描画
+        // Canvas に描画（リサイズ）
+        const originalWidth = settings.width || video.videoWidth;
+        const originalHeight = settings.height || video.videoHeight;
+
+        const MAX_WIDTH = 1280;
+        const MAX_HEIGHT = 720;
+
+        let targetWidth = originalWidth;
+        let targetHeight = originalHeight;
+
+        if (originalWidth > MAX_WIDTH || originalHeight > MAX_HEIGHT) {
+            const widthRatio = MAX_WIDTH / originalWidth;
+            const heightRatio = MAX_HEIGHT / originalHeight;
+            const ratio = Math.min(widthRatio, heightRatio);
+
+            targetWidth = Math.floor(originalWidth * ratio);
+            targetHeight = Math.floor(originalHeight * ratio);
+        }
+
         const canvas = document.createElement('canvas');
-        canvas.width = settings.width || video.videoWidth;
-        canvas.height = settings.height || video.videoHeight;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('Canvas context error');
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
 
         // ストリームを停止
         stream.getTracks().forEach(track => track.stop());
         video.srcObject = null;
 
-        // Base64に変換
-        return canvas.toDataURL('image/png');
+        console.log(`📸 画像圧縮: ${originalWidth}x${originalHeight} → ${targetWidth}x${targetHeight}`);
+
+        // Base64に変換（JPEG、品質80%）
+        return canvas.toDataURL('image/jpeg', 0.8);
     } catch (error: any) {
         if (error.name === 'NotAllowedError') {
             throw new Error('画面共有が拒否されました。もう一度お試しください。');
